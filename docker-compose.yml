@@ -30,8 +30,6 @@ services:
       - "8000:8000"
     depends_on:
       - db
-      - github-mcp-1
-      - github-mcp-2
     networks:
       - cortex-network
 
