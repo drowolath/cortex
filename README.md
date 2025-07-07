@@ -1,6 +1,8 @@
 # Cortex - Intelligent MCP Agent Orchestrator
 
-Cortex is an intelligent agent orchestrator that manages multiple MCP (Model Context Protocol) servers for users. It combines LiteLLM for natural language understanding with user-configured MCP servers to provide a powerful, multi-tenant agent platform.
+Cortex is an intelligent agent orchestrator that manages multiple MCP (Model Context Protocol) servers for users.
+
+It combines LiteLLM for natural language understanding with user-configured MCP servers to provide a powerful, multi-tenant agent platform.
 
 ## Features
 
@@ -11,3 +13,6 @@ Cortex is an intelligent agent orchestrator that manages multiple MCP (Model Con
 **Conversational** - Maintains conversation context and history
 **Smart Routing** - Automatically selects the right server and tool for each request
 
+## Deployment
+
+The idea of this project is to be able to scale the API independently of the MCP servers.

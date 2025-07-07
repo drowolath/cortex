@@ -1,0 +1,92 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database (shared)
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: cortex
+      POSTGRES_USER: cortex
+      POSTGRES_PASSWORD: your_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - cortex-network
+
+  # Main Cortex API
+  cortex-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgresql+asyncpg://cortex:your_password@db:5432/cortex
+      CORTEX_ENCRYPTION_KEY: ${CORTEX_ENCRYPTION_KEY}
+      # MCP Server URLs
+      GITHUB_MCP_SERVER_1_URL: http://github-mcp-1:8080
+      GITHUB_MCP_SERVER_2_URL: http://github-mcp-2:8080
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+      - github-mcp-1
+      - github-mcp-2
+    networks:
+      - cortex-network
+
+  # GitHub MCP Server Instance 1
+  github-mcp-1:
+    build:
+      context: .
+      dockerfile: docker/mcp-server/Dockerfile
+    environment:
+      GITHUB_TOKEN: ${GITHUB_TOKEN}
+    command: ["python", "-m", "cortex.mcp.server_runner", "--server-type", "github", "--host", "0.0.0.0", "--port", "8080"]
+    ports:
+      - "8081:8080"
+    networks:
+      - cortex-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # GitHub MCP Server Instance 2 (for load balancing)
+  github-mcp-2:
+    build:
+      context: .
+      dockerfile: docker/mcp-server/Dockerfile
+    environment:
+      GITHUB_TOKEN: ${GITHUB_TOKEN}
+    command: ["python", "-m", "cortex.mcp.server_runner", "--server-type", "github", "--host", "0.0.0.0", "--port", "8080"]
+    ports:
+      - "8082:8080"
+    networks:
+      - cortex-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Future: Slack MCP Server
+  # slack-mcp:
+  #   build:
+  #     context: .
+  #     dockerfile: docker/mcp-server/Dockerfile
+  #   environment:
+  #     SLACK_TOKEN: ${SLACK_TOKEN}
+  #   command: ["python", "-m", "cortex.mcp.server_runner", "--server-type", "slack", "--host", "0.0.0.0", "--port", "8080"]
+  #   ports:
+  #     - "8083:8080"
+  #   networks:
+  #     - cortex-network
+
+volumes:
+  postgres_data:
+
+networks:
+  cortex-network:
+    driver: bridge
