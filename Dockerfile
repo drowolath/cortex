@@ -15,4 +15,4 @@ RUN poetry config virtualenvs.create false && poetry install --no-interaction --
 
 COPY . .
 
-CMD ["uvicorn", "cortex.api.rest:app", "--port", "5000", "--host", "0.0.0.0", "--reload"]
+CMD ["uvicorn", "cortex.api.app:app", "--port", "5000", "--host", "0.0.0.0", "--reload"]
