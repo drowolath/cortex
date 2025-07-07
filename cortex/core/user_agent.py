@@ -1,63 +1,23 @@
-import importlib
 from typing import Dict, List, Optional, Any
-from cortex.core.database.mcp_service import get_mcp_service, MCPServerService
-from cortex.core.logger import get_logger
+from .mcp_base_service import MCPBaseService
+from .github_utils import GitHubUtils
+from .logger import get_logger
 
 logger = get_logger(__name__)
 
 
-class UserAgentOrchestrator:
+class UserAgentOrchestrator(MCPBaseService):
     """
     Agent orchestrator that uses user-configured MCP servers from the database.
     """
 
     def __init__(self, user_id: int):
-        self.user_id = user_id
-        self.mcp_service: Optional[MCPServerService] = None
-        self.loaded_servers: Dict[int, Any] = {}
-        self._initialized = False
+        super().__init__(user_id)
 
     async def initialize(self):
         """Initialize the orchestrator with user's MCP servers."""
-        if self._initialized:
-            return
-
-        self.mcp_service = await get_mcp_service()
-        await self._load_user_servers()
-        self._initialized = True
+        await super().initialize()
         logger.info(f"User Agent Orchestrator initialized for user {self.user_id}")
-
-    async def _load_user_servers(self):
-        """Load user's enabled MCP servers."""
-        if not self.mcp_service:
-            return
-
-        servers = await self.mcp_service.get_user_mcp_servers(self.user_id)
-        enabled_servers = [s for s in servers if s.is_enabled]
-
-        for server in enabled_servers:
-            try:
-                # Import the module
-                module = importlib.import_module(server.module_path)
-                self.loaded_servers[server.id] = {
-                    "module": module,
-                    "config": server,
-                    "credentials": await self._load_server_credentials(server.id),
-                }
-                logger.info(f"Loaded MCP server: {server.name} (ID: {server.id})")
-            except Exception as e:
-                logger.error(f"Failed to load MCP server {server.name}: {e}")
-
-    async def _load_server_credentials(self, server_id: int) -> Dict[str, str]:
-        """Load and decrypt credentials for a server."""
-        try:
-            credentials = await self.mcp_service.get_server_credentials(
-                server_id, self.user_id, decrypt=True
-            )
-            return {cred.credential_name: cred.credential_value for cred in credentials}
-        except Exception as e:
-            logger.error(f"Failed to load credentials for server {server_id}: {e}")
-            return {}
 
     async def process_message(
         self, message: str, server_id: Optional[int] = None
@@ -78,10 +38,7 @@ class UserAgentOrchestrator:
         # Get target server
         target_server = await self._get_target_server(server_id)
         if not target_server:
-            available_servers = list(self.loaded_servers.keys())
-            return (
-                f"Error: No MCP server available. Loaded servers: {available_servers}"
-            )
+            return self._get_no_server_error_message()
 
         server_config = target_server["config"]
 
@@ -100,17 +57,14 @@ class UserAgentOrchestrator:
         self, server_id: Optional[int]
     ) -> Optional[Dict[str, Any]]:
         """Get the target server to use for processing."""
-        if server_id and server_id in self.loaded_servers:
-            return self.loaded_servers[server_id]
+        target_server = await super()._get_target_server(server_id)
+        if target_server:
+            return target_server
 
-        # Try to get user's default server
+        # Fall back to database default server lookup for user agent
         default_server = await self.mcp_service.get_default_mcp_server(self.user_id)
         if default_server and default_server.id in self.loaded_servers:
             return self.loaded_servers[default_server.id]
-
-        # Fall back to any available server
-        if self.loaded_servers:
-            return next(iter(self.loaded_servers.values()))
 
         return None
 
@@ -122,12 +76,8 @@ class UserAgentOrchestrator:
         config = server_info["config"]
         credentials = server_info["credentials"]
 
-        # Apply credentials to the GitHub client if available
-        if hasattr(module, "github_client") and "github_token" in credentials:
-            module.github_client.token = credentials["github_token"]
-            module.github_client.headers["Authorization"] = (
-                f"token {credentials['github_token']}"
-            )
+        # Apply GitHub credentials
+        GitHubUtils.apply_github_credentials(server_info)
 
         message = message.strip().lower()
 
@@ -252,23 +202,7 @@ class UserAgentOrchestrator:
 
     async def get_available_servers(self) -> List[Dict[str, Any]]:
         """Get list of available MCP servers for the user."""
-        if not self._initialized:
-            await self.initialize()
-
-        servers = []
-        for server_id, server_info in self.loaded_servers.items():
-            config = server_info["config"]
-            servers.append(
-                {
-                    "id": server_id,
-                    "name": config.name,
-                    "type": config.server_type,
-                    "description": config.description,
-                    "is_default": config.is_default,
-                }
-            )
-
-        return servers
+        return await super().get_available_servers()
 
     async def reload_servers(self):
         """Reload user's MCP servers from database."""

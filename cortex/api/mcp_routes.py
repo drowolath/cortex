@@ -2,14 +2,16 @@ from typing import Dict, List, Optional, Any
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
-from cortex.core.database.mcp_service import get_mcp_service, MCPServerService
-from cortex.core.user_agent import process_user_message, get_user_orchestrator
-from cortex.core.intelligent_agent import (
+from ..core.database.mcp_service import get_mcp_service, MCPServerService
+from ..core.user_agent import process_user_message, get_user_orchestrator
+from ..core.intelligent_agent import (
     process_intelligent_message,
     get_intelligent_agent,
 )
-from cortex.api.dependencies import get_current_user
-from cortex.core.database.models import User
+from ..core.queue_service import QueueService
+from ..core.api_utils import handle_mcp_errors
+from .dependencies import get_current_user
+from ..core.database.models import User
 
 router = APIRouter(prefix="/mcp", tags=["MCP Servers"])
 
@@ -416,3 +418,58 @@ async def intelligent_process_message(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to process intelligent message: {str(e)}",
         )
+
+
+# Queue endpoints
+class QueueJobRequest(BaseModel):
+    server_type: str
+    tool_name: str
+    parameters: Dict[str, Any]
+
+
+class QueueJobResponse(BaseModel):
+    job_id: str
+    status: str = "queued"
+
+
+class JobResultResponse(BaseModel):
+    job_id: str
+    status: str
+    result: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+
+
+@router.post("/queue/enqueue", response_model=QueueJobResponse)
+@handle_mcp_errors
+async def enqueue_job(
+    request: QueueJobRequest, current_user: User = Depends(get_current_user)
+):
+    """Enqueue a job for asynchronous processing"""
+    queue_service = QueueService()
+    job_id = await queue_service.enqueue_job(
+        server_type=request.server_type,
+        tool_name=request.tool_name,
+        parameters=request.parameters,
+    )
+    await queue_service.close()
+
+    return QueueJobResponse(job_id=job_id)
+
+
+@router.get("/queue/result/{job_id}", response_model=JobResultResponse)
+@handle_mcp_errors
+async def get_job_result(job_id: str, current_user: User = Depends(get_current_user)):
+    """Get job result"""
+    queue_service = QueueService()
+    result = await queue_service.get_job_result(job_id)
+    await queue_service.close()
+
+    if not result:
+        return JobResultResponse(job_id=job_id, status="pending")
+
+    return JobResultResponse(
+        job_id=job_id,
+        status=result.get("status", "unknown"),
+        result=result.get("result"),
+        error=result.get("error"),
+    )

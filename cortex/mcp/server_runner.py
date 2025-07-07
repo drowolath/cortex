@@ -14,7 +14,8 @@ from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 import importlib
 
-from cortex.core.logger import get_logger
+from ..core.logger import get_logger
+from ..core.github_utils import GitHubUtils
 
 logger = get_logger(__name__)
 
@@ -153,6 +154,75 @@ class MCPServerRunner:
             await self.apply_credentials()
             return {"message": "Credentials updated successfully"}
 
+        @self.app.post("/queue/process")
+        async def process_queue():
+            """Process jobs from Redis queue"""
+            import redis.asyncio as redis
+
+            redis_client = redis.Redis.from_url(
+                os.getenv("REDIS_URL", "redis://localhost:6379")
+            )
+
+            try:
+                # Pop job from queue (blocking for 1 second)
+                job_data = await redis_client.blpop(
+                    f"mcp_queue:{self.server_type}", timeout=1
+                )
+
+                if not job_data:
+                    return {"message": "No jobs in queue"}
+
+                job = json.loads(job_data[1])
+                tool_name = job["tool_name"]
+                parameters = job["parameters"]
+                job_id = job["job_id"]
+
+                # Execute the tool
+                if not self.mcp_module:
+                    await self.load_mcp_module()
+
+                await self.apply_credentials()
+
+                if hasattr(self.mcp_module, "app") and hasattr(
+                    self.mcp_module.app, "_tools"
+                ):
+                    tool_func = self.mcp_module.app._tools.get(tool_name)
+                    if tool_func:
+                        result = await tool_func(**parameters)
+
+                        # Store result in Redis
+                        await redis_client.setex(
+                            f"mcp_result:{job_id}",
+                            3600,  # 1 hour TTL
+                            json.dumps({"result": result, "status": "completed"}),
+                        )
+
+                        return {"job_id": job_id, "status": "completed"}
+                    else:
+                        error_msg = f"Tool '{tool_name}' not found"
+                        await redis_client.setex(
+                            f"mcp_result:{job_id}",
+                            3600,
+                            json.dumps({"error": error_msg, "status": "failed"}),
+                        )
+                        return {
+                            "job_id": job_id,
+                            "status": "failed",
+                            "error": error_msg,
+                        }
+
+            except Exception as e:
+                logger.error(f"Error processing queue job: {e}")
+                if "job_id" in locals():
+                    await redis_client.setex(
+                        f"mcp_result:{job_id}",
+                        3600,
+                        json.dumps({"error": str(e), "status": "failed"}),
+                    )
+                return {"error": str(e)}
+            finally:
+                await redis_client.close()
+
     async def load_mcp_module(self):
         """Load the MCP module based on server type"""
         try:
@@ -172,18 +242,22 @@ class MCPServerRunner:
             return
 
         try:
-            if self.server_type == "github" and hasattr(
-                self.mcp_module, "github_client"
-            ):
+            if self.server_type == "github":
                 github_token = self.config.get("github_token") or os.getenv(
                     "GITHUB_TOKEN"
                 )
                 if github_token:
-                    self.mcp_module.github_client.token = github_token
-                    self.mcp_module.github_client.headers["Authorization"] = (
-                        f"token {github_token}"
-                    )
-                    logger.info("Applied GitHub credentials")
+                    # Create server_data structure for GitHubUtils
+                    server_data = {
+                        "module": self.mcp_module,
+                        "credentials": {"github_token": github_token},
+                    }
+
+                    success = GitHubUtils.apply_github_credentials(server_data)
+                    if success:
+                        logger.info("Applied GitHub credentials")
+                    else:
+                        logger.warning("Failed to apply GitHub credentials")
         except Exception as e:
             logger.error(f"Failed to apply credentials: {e}")
 

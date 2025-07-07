@@ -1,24 +1,21 @@
-import importlib
 import json
 from typing import Dict, List, Optional, Any
-from cortex.core.database.mcp_service import get_mcp_service, MCPServerService
-from cortex.core.litellm import prompt_llm
-from cortex.core.logger import get_logger
+from .mcp_base_service import MCPBaseService
+from .github_utils import GitHubUtils
+from .litellm import prompt_llm
+from .logger import get_logger
 
 logger = get_logger(__name__)
 
 
-class IntelligentUserAgent:
+class IntelligentUserAgent(MCPBaseService):
     """
     Enhanced agent orchestrator that uses LiteLLM for intelligent message processing
     and tool selection, combined with user-configured MCP servers.
     """
 
     def __init__(self, user_id: int):
-        self.user_id = user_id
-        self.mcp_service: Optional[MCPServerService] = None
-        self.loaded_servers: Dict[int, Any] = {}
-        self._initialized = False
+        super().__init__(user_id)
         self.system_prompt = self._build_system_prompt()
 
     def _build_system_prompt(self) -> str:
@@ -48,44 +45,8 @@ Always respond in a helpful, concise manner. If you need to call an MCP tool, pr
 
     async def initialize(self):
         """Initialize the orchestrator with user's MCP servers."""
-        if self._initialized:
-            return
-
-        self.mcp_service = await get_mcp_service()
-        await self._load_user_servers()
-        self._initialized = True
+        await super().initialize()
         logger.info(f"Intelligent User Agent initialized for user {self.user_id}")
-
-    async def _load_user_servers(self):
-        """Load user's enabled MCP servers."""
-        if not self.mcp_service:
-            return
-
-        servers = await self.mcp_service.get_user_mcp_servers(self.user_id)
-        enabled_servers = [s for s in servers if s.is_enabled]
-
-        for server in enabled_servers:
-            try:
-                module = importlib.import_module(server.module_path)
-                self.loaded_servers[server.id] = {
-                    "module": module,
-                    "config": server,
-                    "credentials": await self._load_server_credentials(server.id),
-                }
-                logger.info(f"Loaded MCP server: {server.name} (ID: {server.id})")
-            except Exception as e:
-                logger.error(f"Failed to load MCP server {server.name}: {e}")
-
-    async def _load_server_credentials(self, server_id: int) -> Dict[str, str]:
-        """Load and decrypt credentials for a server."""
-        try:
-            credentials = await self.mcp_service.get_server_credentials(
-                server_id, self.user_id, decrypt=True
-            )
-            return {cred.credential_name: cred.credential_value for cred in credentials}
-        except Exception as e:
-            logger.error(f"Failed to load credentials for server {server_id}: {e}")
-            return {}
 
     async def process_message(
         self, message: str, server_id: Optional[int] = None, use_llm: bool = True
@@ -244,14 +205,9 @@ Respond only with valid JSON:
     ) -> str:
         """Execute a GitHub MCP action."""
         module = server_info["module"]
-        credentials = server_info["credentials"]
 
         # Apply credentials
-        if hasattr(module, "github_client") and "github_token" in credentials:
-            module.github_client.token = credentials["github_token"]
-            module.github_client.headers["Authorization"] = (
-                f"token {credentials['github_token']}"
-            )
+        GitHubUtils.apply_github_credentials(server_info)
 
         # Map tool names to module functions
         tool_mapping = {
@@ -296,14 +252,9 @@ Respond only with valid JSON:
     ) -> str:
         """Simple GitHub message processing (keyword-based)."""
         module = server_info["module"]
-        credentials = server_info["credentials"]
 
         # Apply credentials
-        if hasattr(module, "github_client") and "github_token" in credentials:
-            module.github_client.token = credentials["github_token"]
-            module.github_client.headers["Authorization"] = (
-                f"token {credentials['github_token']}"
-            )
+        GitHubUtils.apply_github_credentials(server_info)
 
         message = message.strip().lower()
 
@@ -329,16 +280,15 @@ Respond only with valid JSON:
     async def _get_target_server(
         self, server_id: Optional[int]
     ) -> Optional[Dict[str, Any]]:
-        """Get target server (same as user_agent.py)."""
-        if server_id and server_id in self.loaded_servers:
-            return self.loaded_servers[server_id]
+        """Get target server."""
+        target_server = await super()._get_target_server(server_id)
+        if target_server:
+            return target_server
 
+        # Fall back to database default server lookup
         default_server = await self.mcp_service.get_default_mcp_server(self.user_id)
         if default_server and default_server.id in self.loaded_servers:
             return self.loaded_servers[default_server.id]
-
-        if self.loaded_servers:
-            return next(iter(self.loaded_servers.values()))
 
         return None
 
@@ -402,23 +352,7 @@ Respond only with valid JSON:
 
     async def get_available_servers(self) -> List[Dict[str, Any]]:
         """Get list of available MCP servers for the user."""
-        if not self._initialized:
-            await self.initialize()
-
-        servers = []
-        for server_id, server_info in self.loaded_servers.items():
-            config = server_info["config"]
-            servers.append(
-                {
-                    "id": server_id,
-                    "name": config.name,
-                    "type": config.server_type,
-                    "description": config.description,
-                    "is_default": config.is_default,
-                }
-            )
-
-        return servers
+        return await super().get_available_servers()
 
 
 # Factory functions
