@@ -1,0 +1,53 @@
+graph TB
+    subgraph "CHAINLIT (Presentation Layer)"
+        UI[Chat Interface]
+        AUTH[User Authentication]
+        SESSION[Session Management]
+        MCPAUTH[MCP Access Control]
+        MSGFORWARD[Message Forwarding]
+    end
+
+    subgraph "CORTEX (Business Logic Layer)"
+        API[REST API Endpoints]
+        QUEUE[Message Queue Handler]
+        AGENT[Agent Orchestrator]
+        REASONING[Reasoning Engine]
+        WORKFLOW[Workflow Manager]
+        MCPROUTER[MCP Request Router]
+    end
+
+    subgraph "📨 MESSAGE INFRASTRUCTURE"
+        REDIS[Redis/RabbitMQ]
+        MSGQUEUE[(Message Queue)]
+    end
+
+    subgraph "🔧 MCP SERVERS CLUSTER"
+        GITHUB[GitHub MCP Server]
+        SLACK[Slack MCP Server]
+        NOTION[Notion MCP Server]
+        CUSTOM[Custom MCP Servers]
+    end
+
+    subgraph "🗄️ SHARED DATA LAYER"
+        POSTGRES[(PostgreSQL)]
+    end
+
+    %% Connections
+    UI --> AUTH
+    AUTH --> SESSION
+    SESSION --> MSGFORWARD
+    MSGFORWARD --> QUEUE
+
+    API --> AGENT
+    QUEUE --> AGENT
+    AGENT --> REASONING
+    AGENT --> WORKFLOW
+    WORKFLOW --> MCPROUTER
+    MCPROUTER --> MSGQUEUE
+
+    MSGQUEUE --> GITHUB
+    MSGQUEUE --> SLACK
+    MSGQUEUE --> NOTION
+    MSGQUEUE --> CUSTOM
+
+    AGENT --> POSTGRES
