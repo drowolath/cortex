@@ -1,13 +1,12 @@
 graph TB
-    subgraph "CHAINLIT (Presentation Layer)"
+    subgraph "CHAINLIT"
         UI[Chat Interface]
         AUTH[User Authentication]
         SESSION[Session Management]
-        MCPAUTH[MCP Access Control]
         MSGFORWARD[Message Forwarding]
     end
 
-    subgraph "CORTEX (Business Logic Layer)"
+    subgraph "CORTEX"
         API[REST API Endpoints]
         QUEUE[Message Queue Handler]
         AGENT[Agent Orchestrator]
@@ -16,12 +15,12 @@ graph TB
         MCPROUTER[MCP Request Router]
     end
 
-    subgraph "📨 MESSAGE INFRASTRUCTURE"
+    subgraph "📨 MESSAGE INFRA"
         REDIS[Redis/RabbitMQ]
         MSGQUEUE[(Message Queue)]
     end
 
-    subgraph "🔧 MCP SERVERS CLUSTER"
+    subgraph "🔧 MCP CLUSTER"
         GITHUB[GitHub MCP Server]
         SLACK[Slack MCP Server]
         NOTION[Notion MCP Server]
