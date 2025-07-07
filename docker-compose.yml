@@ -15,6 +15,14 @@ services:
     networks:
       - cortex-network
 
+  # Redis for queues
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    networks:
+      - cortex-network
+
   # Main Cortex API
   cortex-api:
     build:
@@ -23,6 +31,7 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://cortex:your_password@db:5432/cortex
       CORTEX_ENCRYPTION_KEY: ${CORTEX_ENCRYPTION_KEY}
+      REDIS_URL: redis://redis:6379
       # MCP Server URLs
       GITHUB_MCP_SERVER_1_URL: http://github-mcp-1:8080
       GITHUB_MCP_SERVER_2_URL: http://github-mcp-2:8080
@@ -30,6 +39,7 @@ services:
       - "8000:8000"
     depends_on:
       - db
+      - redis
     networks:
       - cortex-network
 
@@ -40,6 +50,7 @@ services:
       dockerfile: docker/mcp-server/Dockerfile
     environment:
       GITHUB_TOKEN: ${GITHUB_TOKEN}
+      REDIS_URL: redis://redis:6379
     command: ["python", "-m", "cortex.mcp.server_runner", "--server-type", "github", "--host", "0.0.0.0", "--port", "8080"]
     ports:
       - "8081:8080"
@@ -58,6 +69,7 @@ services:
       dockerfile: docker/mcp-server/Dockerfile
     environment:
       GITHUB_TOKEN: ${GITHUB_TOKEN}
+      REDIS_URL: redis://redis:6379
     command: ["python", "-m", "cortex.mcp.server_runner", "--server-type", "github", "--host", "0.0.0.0", "--port", "8080"]
     ports:
       - "8082:8080"

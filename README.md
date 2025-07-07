@@ -4,6 +4,62 @@ Cortex is an intelligent agent orchestrator that manages multiple MCP (Model Con
 
 It combines LiteLLM for natural language understanding with user-configured MCP servers to provide a powerful, multi-tenant agent platform.
 
+```mermaid
+graph TB
+    subgraph "CHAINLIT"
+        UI[Chat Interface]
+        AUTH[User Authentication]
+        SESSION[Session Management]
+        MSGFORWARD[Message Forwarding]
+    end
+
+    subgraph "CORTEX"
+        API[REST API Endpoints]
+        QUEUE[Message Queue Handler]
+        AGENT[Agent Orchestrator]
+        REASONING[Reasoning Engine]
+        WORKFLOW[Workflow Manager]
+        MCPROUTER[MCP Request Router]
+    end
+
+    subgraph "📨 MESSAGE INFRA"
+        REDIS[Redis/RabbitMQ]
+        MSGQUEUE[(Message Queue)]
+    end
+
+    subgraph "🔧 MCP CLUSTER"
+        GITHUB[GitHub MCP Server]
+        SLACK[Slack MCP Server]
+        NOTION[Notion MCP Server]
+        CUSTOM[Custom MCP Servers]
+    end
+
+    subgraph "🗄️ SHARED DATA LAYER"
+        POSTGRES[(PostgreSQL)]
+    end
+
+    %% Connections
+    UI --> AUTH
+    AUTH --> SESSION
+    SESSION --> MSGFORWARD
+    MSGFORWARD --> QUEUE
+    MSGFORWARD --> API
+
+    API --> AGENT
+    QUEUE --> AGENT
+    AGENT --> REASONING
+    AGENT --> WORKFLOW
+    WORKFLOW --> MCPROUTER
+    MCPROUTER --> MSGQUEUE
+
+    MSGQUEUE --> GITHUB
+    MSGQUEUE --> SLACK
+    MSGQUEUE --> NOTION
+    MSGQUEUE --> CUSTOM
+
+    AGENT --> POSTGRES
+```
+
 ## Features
 
 **Intelligent Message Processing** - Uses LiteLLM to understand natural language and route to appropriate MCP servers
