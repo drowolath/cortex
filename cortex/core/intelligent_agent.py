@@ -49,7 +49,7 @@ Always respond in a helpful, concise manner. If you need to call an MCP tool, pr
         logger.info(f"Intelligent User Agent initialized for user {self.user_id}")
 
     async def process_message(
-        self, message: str, server_id: Optional[int] = None, use_llm: bool = True
+        self, message: str, server_id: Optional[int] = None
     ) -> str:
         """
         Process a message using LiteLLM for intelligence and MCP servers for actions.
@@ -57,17 +57,12 @@ Always respond in a helpful, concise manner. If you need to call an MCP tool, pr
         Args:
             message: The user message
             server_id: Optional specific server ID
-            use_llm: Whether to use LiteLLM for processing (default: True)
 
         Returns:
             Response string
         """
         if not self._initialized:
             await self.initialize()
-
-        if not use_llm:
-            # Fallback to simple keyword-based processing
-            return await self._process_simple_message(message, server_id)
 
         try:
             # First, use LiteLLM to understand the message and determine action
@@ -231,22 +226,6 @@ Respond only with valid JSON:
         except Exception as e:
             return f"Error calling {tool_name}: {str(e)}"
 
-    async def _process_simple_message(
-        self, message: str, server_id: Optional[int] = None
-    ) -> str:
-        """Fallback to simple keyword-based processing."""
-        # This is the same logic as in user_agent.py
-        target_server = await self._get_target_server(server_id)
-        if not target_server:
-            return "No MCP server available."
-
-        server_config = target_server["config"]
-
-        if server_config.server_type == "github":
-            return await self._process_github_message_simple(message, target_server)
-        else:
-            return f"Simple processing for {server_config.server_type} not implemented."
-
     async def _process_github_message_simple(
         self, message: str, server_info: Dict[str, Any]
     ) -> str:
@@ -367,7 +346,6 @@ async def process_intelligent_message(
     user_id: int,
     message: str,
     server_id: Optional[int] = None,
-    use_llm: bool = True,
     conversation_history: Optional[List[Dict[str, str]]] = None,
 ) -> str:
     """
@@ -377,7 +355,6 @@ async def process_intelligent_message(
         user_id: The user ID
         message: The message string to process
         server_id: Optional specific server ID to use
-        use_llm: Whether to use LiteLLM for intelligence
         conversation_history: Optional conversation context
 
     Returns:
@@ -388,4 +365,4 @@ async def process_intelligent_message(
     if conversation_history:
         return await agent.chat_with_context(message, conversation_history)
     else:
-        return await agent.process_message(message, server_id, use_llm)
+        return await agent.process_message(message, server_id)

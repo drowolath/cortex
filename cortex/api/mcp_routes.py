@@ -3,7 +3,6 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from ..core.database.mcp_service import get_mcp_service, MCPServerService
-from ..core.user_agent import process_user_message, get_user_orchestrator
 from ..core.intelligent_agent import (
     process_intelligent_message,
     get_intelligent_agent,
@@ -98,7 +97,6 @@ class MessageRequest(BaseModel):
 class IntelligentMessageRequest(BaseModel):
     message: str = Field(..., min_length=1)
     server_id: Optional[int] = None
-    use_llm: bool = True
     conversation_history: Optional[List[Dict[str, str]]] = None
 
 
@@ -334,45 +332,11 @@ async def get_user_preferences(
         )
 
 
-@router.post("/process", response_model=MessageResponse)
-async def process_message_endpoint(
-    request: MessageRequest, current_user: User = Depends(get_current_user)
-):
-    """Process a message using user's configured MCP servers."""
-    try:
-        response = await process_user_message(
-            current_user.id, request.message, request.server_id
-        )
-
-        # Get info about which server was used
-        orchestrator = await get_user_orchestrator(current_user.id)
-        servers = await orchestrator.get_available_servers()
-
-        server_used = None
-        if request.server_id:
-            server_used = next(
-                (s for s in servers if s["id"] == request.server_id), None
-            )
-        elif servers:
-            # Find default server or first available
-            server_used = next(
-                (s for s in servers if s.get("is_default")),
-                servers[0] if servers else None,
-            )
-
-        return MessageResponse(response=response, server_used=server_used)
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to process message: {str(e)}",
-        )
-
-
 @router.get("/servers/available")
 async def get_available_servers(current_user: User = Depends(get_current_user)):
     """Get available MCP servers for the current user."""
     try:
-        orchestrator = await get_user_orchestrator(current_user.id)
+        orchestrator = await get_intelligent_agent(current_user.id)
         servers = await orchestrator.get_available_servers()
         return {"servers": servers}
     except Exception as e:
@@ -392,7 +356,6 @@ async def intelligent_process_message(
             user_id=current_user.id,
             message=request.message,
             server_id=request.server_id,
-            use_llm=request.use_llm,
             conversation_history=request.conversation_history,
         )
 
