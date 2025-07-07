@@ -25,12 +25,12 @@ The idea of this project is to be able to scale the API independently of the MCP
 ### Running REST API
 A simple docker command will have you up and running
 
-`docker-compose -f docker-compose.yml up -d db cortex-api`
+`docker compose up -d db cortex-api`
 
 ### Running a MCP server
 
 The same goes for any MCP server you may have configured
 
-`docker-compose -f docker-compose.yml up -d github-mcp-1`
+`docker compose up -d github-mcp-1`
 
 and of course you can scale them `--scale github-mcp-1=$SCALE_COUNT`
